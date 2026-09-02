@@ -109,7 +109,20 @@ error_with_color_and_exit() {
 # Step 1: Initialize git submodules
 # ==========================================
 echo "[1/9] Initializing git submodules..."
-git submodule update --init --recursive
+if git -C "${SCRIPT_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git -C "${SCRIPT_DIR}" submodule update --init --recursive
+elif [[ -d "${SCRIPT_DIR}/thirdparty/tiny-cuda-nn/bindings/torch" ]] && \
+     [[ -f "${SCRIPT_DIR}/threedgrt_tracer/dependencies/optix-dev/include/optix.h" ]]; then
+    # Docker builds from a parent repository's populated submodule do not have
+    # access to the parent's .git/modules directory.  The recursive dependency
+    # contents are sufficient for installation, so accept that exported-tree
+    # layout instead of requiring Git metadata that is outside the build context.
+    echo "  Git metadata unavailable; using populated recursive dependencies"
+else
+    error_with_color_and_exit \
+        "ERROR: Git metadata is unavailable and recursive dependencies are missing.\n" \
+        "  Initialize this checkout with: git submodule update --init --recursive"
+fi
 echo ""
 
 # ==========================================
