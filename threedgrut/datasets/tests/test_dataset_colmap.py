@@ -20,6 +20,7 @@ from PIL import Image
 pytest.importorskip("ncore")
 
 from threedgrut.datasets.dataset_colmap import (
+    _load_rgb_image,
     _opencv_pinhole_intrinsics_from_colmap,
     _resize_image_folder,
 )
@@ -96,3 +97,13 @@ def test_resize_image_folder_matches_gsplat_rounding(tmp_path):
 
     with Image.open(target / "frame.png") as image:
         assert image.size == (4, 2)
+
+
+def test_load_rgb_image_drops_alpha_channel(tmp_path):
+    source = tmp_path / "frame.png"
+    Image.new("RGBA", (3, 2), color=(10, 20, 30, 40)).save(source)
+
+    image = _load_rgb_image(str(source))
+
+    assert image.shape == (2, 3, 3)
+    np.testing.assert_array_equal(image[0, 0], [10, 20, 30])
