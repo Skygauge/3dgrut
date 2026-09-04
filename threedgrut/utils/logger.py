@@ -14,6 +14,9 @@
 # limitations under the License.
 
 import atexit
+import json
+import os
+import sys
 import warnings
 from typing import Optional
 
@@ -47,6 +50,7 @@ class IterationSpeedColumn(ProgressColumn):
 
 
 class RichLogger:
+    machine_progress_prefix = "THREEDGRUT_PROGRESS "
     console = Console()
     progress = Progress(
         TextColumn("[progress.description]{task.description}"),
@@ -97,6 +101,33 @@ class RichLogger:
             additional_info.append(f"{formatted_k}: {formatted_v}")
         return " ".join(additional_info)
 
+    @staticmethod
+    def _machine_progress_interval() -> int:
+        value = os.environ.get("THREEDGRUT_MACHINE_PROGRESS_INTERVAL", "")
+        try:
+            interval = int(value)
+        except ValueError:
+            return 0
+        return interval if interval > 0 else 0
+
+    def _emit_machine_progress(self, task_name, *, force=False):
+        state = self.progress_tasks[task_name]
+        interval = state["machine_progress_interval"]
+        if interval <= 0:
+            return
+        task = self.get_task(state["task_id"])
+        completed = int(task.completed)
+        total = int(task.total or 0)
+        if not force and completed - state["last_machine_progress"] < interval:
+            return
+        state["last_machine_progress"] = completed
+        payload = json.dumps(
+            {"task": task_name, "completed": completed, "total": total},
+            separators=(",", ":"),
+        )
+        sys.stdout.write(self.machine_progress_prefix + payload + "\n")
+        sys.stdout.flush()
+
     def start_progress(self, task_name, total_steps, color=None, **metrics):
         additional_info = self._concat_additional_progress_info(**metrics)
         task_id = self.progress.add_task(f"[{color}]{task_name}", total=total_steps, additional_info=additional_info)
@@ -104,16 +135,24 @@ class RichLogger:
         if len(self.progress_tasks) == 0:
             self.progress.start()
             self.progress_alive = True
-        self.progress_tasks[task_name] = dict(task_id=task_id, additional_info="")
+        self.progress_tasks[task_name] = dict(
+            task_id=task_id,
+            additional_info="",
+            machine_progress_interval=self._machine_progress_interval(),
+            last_machine_progress=0,
+        )
+        self._emit_machine_progress(task_name, force=True)
 
     def log_progress(self, task_name, advance, **metrics):
         additional_info = self._concat_additional_progress_info(**metrics)
         self.progress.update(
             self.progress_tasks[task_name]["task_id"], advance=advance, additional_info=additional_info
         )
+        self._emit_machine_progress(task_name)
 
     def end_progress(self, task_name):
         task_id = self.progress_tasks[task_name]["task_id"]
+        self._emit_machine_progress(task_name, force=True)
         # log task time
         self.finished_tasks[task_name] = dict(name=task_name, elapsed=self.get_task(task_id).elapsed)
         # remove task from progress

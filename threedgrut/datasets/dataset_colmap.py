@@ -58,6 +58,12 @@ def _get_relative_paths(path_dir: str) -> list[str]:
     return paths
 
 
+def _load_rgb_image(image_path: str) -> np.ndarray:
+    """Load a COLMAP image with the three channels expected by the trainer."""
+    with Image.open(image_path) as image:
+        return np.asarray(image.convert("RGB"))
+
+
 def _resize_image_folder(image_dir: str, resized_dir: str, factor: int) -> str:
     logger.info(f"Downscaling images by {factor}x from {image_dir} to {resized_dir}.")
     os.makedirs(resized_dir, exist_ok=True)
@@ -708,7 +714,7 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
     @torch.cuda.nvtx.range("colmap_dataset::_getitem")
     def __getitem__(self, idx) -> dict:
         # Load image and get its actual dimensions
-        image_data = np.asarray(Image.open(self.image_paths[idx]))
+        image_data = _load_rgb_image(self.image_paths[idx])
         actual_h, actual_w = image_data.shape[:2]
 
         assert image_data.dtype == np.uint8, "Image data must be of type uint8"
